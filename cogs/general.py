@@ -20,6 +20,7 @@ class General(commands.Cog):
 
             "**=====Chức năng xem thời khóa biểu=====**\n"
             "`!schedule <Tên> <Lớp>` - Tra xem ngày hôm đó học môn gì\n"
+            "`!schedule-full <Tên> <Lớp>` hoặc `!tkb-full`, `!tkbcatuan`, `tkbfull` - Tra xem cả tuần học môn gì\n"
             "`!version-schedule` Kiểm tra phiên bản của thời khóa biểu\n\n"
 
             "**=====Giải trí=====**\n"

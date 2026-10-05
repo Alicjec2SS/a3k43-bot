@@ -311,6 +311,8 @@ class Schedule(commands.Cog):
         weekday = now.weekday()
         if weekday >= 5:
             return "Thứ Hai", True
+        if now.hour >= 17:
+            return (self.DAY_NAMES[weekday + 2], False)
         return (self.DAY_NAMES[weekday + 1], False)
 
     def get_home_class(self, student):
@@ -629,6 +631,97 @@ class Schedule(commands.Cog):
         day, weekend_fallback = self.get_schedule_day()
         text = self.format_schedule(student, day, weekend_fallback)
         await ctx.send(text)
+        
+    @commands.command(name="schedule-full", aliases=["tkb-full", "tkbfull", "tkbcatuan"])
+    async def schedule_full_command(self, ctx, *, query: str = None):
+        if not query:
+            await ctx.send(
+                "❌ Cú pháp:\n"
+                "`!schedule-full <tên>`\n"
+                "`!schedule-full <tên> <lớp>`\n\n"
+                "Ví dụ:\n"
+                "`!schedule-full Dương Bảo Kha`\n"
+                "`!schedule-full Dương Bảo Kha 10A3`"
+            )
+            return
+
+        try:
+            await self.load_data()
+        except Exception as e:
+            await ctx.send(f"❌ Không tải được TKB:\n`{e}`")
+            return
+
+        # Tách tên và lớp giống hệt logic cũ
+        name_query = query.strip()
+        class_query = None
+        match = re.match(r"^(.*?)(?:\s+)(\d{2}[A-Za-z]\d+)$", name_query, flags=re.IGNORECASE)
+
+        if match:
+            name_query = match.group(1).strip()
+            class_query = match.group(2).upper()
+
+        students = self.find_students(name_query, class_query)
+
+        if not students:
+            if class_query:
+                await ctx.send(f"❌ Không tìm thấy học sinh **{name_query}** ở lớp `{class_query}`.")
+            else:
+                await ctx.send(f"❌ Không tìm thấy học sinh **{name_query}**.")
+            return
+
+        # Xử lý trường hợp trùng tên
+        if len(students) > 1:
+            lines = [f"🔎 Tìm thấy **{len(students)}** học sinh:"]
+            for i, student in enumerate(students[:15], start=1):
+                lines.append(f"`{i}.` **{student.get('name', '?')}** — `{student.get('class', '?')}`")
+            if len(students) > 15:
+                lines.append(f"... và {len(students) - 15} kết quả khác.")
+            lines.append("\n💡 Ghi rõ lớp, ví dụ:\n`!schedule-full Dương Bảo Kha 10A3`")
+            await ctx.send("\n".join(lines))
+            return
+
+        student = students[0]
+        home_class = self.get_home_class(student)
+
+        # Khởi tạo Embed hiển thị toàn bộ tuần
+        embed = discord.Embed(
+            title="📅 Lịch học cả tuần",
+            description=f"👤 **{student.get('name', 'Không rõ')}** - 🏫 Lớp **{home_class}**",
+            color=0x2ecc71
+        )
+
+        days = ["Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy"]
+        has_any_lesson = False
+
+        for day in days:
+            lessons = self.get_student_day_schedule(student, day)
+            if not lessons:
+                continue
+
+            has_any_lesson = True
+            morning = [l for l in lessons if l["period"].startswith("Sáng")]
+            afternoon = [l for l in lessons if l["period"].startswith("Chiều")]
+
+            day_str = []
+            
+            # Format siêu gọn: 🌅 Sáng: 1.Toán, 2.Lý, 3.Tin (TC)
+            if morning:
+                m_str = ", ".join([f"`T{l['period'][-1]}` {l['subject']}{' *(TC)*' if l['type'] == 'Tự chọn' else ''}" for l in morning])
+                day_str.append(f"🌅 **Sáng:** {m_str}")
+                
+            if afternoon:
+                a_str = ", ".join([f"`T{l['period'][-1]}` {l['subject']}{' *(TC)*' if l['type'] == 'Tự chọn' else ''}" for l in afternoon])
+                day_str.append(f"🌇 **Chiều:** {a_str}")
+
+            # Thêm thông tin của ngày đó vào Embed
+            embed.add_field(name=f"▶️ {day}", value="\n".join(day_str), inline=False)
+
+        if not has_any_lesson:
+            embed.description += "\n\n📭 Tuần này không có dữ liệu tiết học nào."
+            
+        embed.set_footer(text="*(TC)* = Tiết Tự Chọn")
+
+        await ctx.send(embed=embed)
 
     @commands.command(name="version-schedule", aliases=["tkb-version", "vstkb"])
     async def version_schedule_command(self, ctx):
